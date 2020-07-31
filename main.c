@@ -11,44 +11,63 @@
 
 #define _XTAL_FREQ 20000000
 
-#define DELAY_IN 2000
-#define DELAY_SIGNAL 3000
+#define DELAY_IN 50 // 1/20000000*256*256*4*50=0.66sec
+#define DELAY_SIGNAL 100
 
-void init_ports() {
+unsigned counters[10];
+int signal_flag = 0;
+int signal_timer = 0;
+
+void __interrupt() timer0(void) {
+    for (int i = 0; i < 10; i++) {
+        counters[i]++;
+    }
+    if (signal_flag) {
+        signal_timer++;
+    }
+    T0IF = 0;
+}
+
+void init() {
     TRISA = ~0x01; // 0 is out rest is in
-    TRISB = 0xFF; 
+    TRISB = 0xFF;
     PORTA = 0x00;
     PORTB = 0x00;
+
+    OPTION_REG = 0x00;
+    OPTION_REGbits.PS = 0b111; // 256 prescaler
+    OPTION_REGbits.nRBPU = 1;
+
+    INTCONbits.GIE = 1; //enable interrupts
+    INTCONbits.T0IE = 1; //enable overflow interrupt
+
+    TMR0 = 0;
 }
 
 int get_pin(int id) {
-    if (id >= 8){
-        return (PORTA >> (id-5)) & 1;
+    if (id >= 8) {
+        return (PORTA >> (id - 5)) & 1;
     }
     return (PORTB >> id) & 1;
 }
 
 void main(void) {
-    init_ports();
-    unsigned long counters[10];
-    int signal_flag = 0;
-    int signal_timer = 0;
-    
+    init();
+
     while (1) {
         for (int i = 0; i < 10; i++) {
             if (!get_pin(i)) {
                 counters[i] = 0;
             }
-            counters[i]++;
             if (counters[i] >= DELAY_IN) {
                 counters[i] = 0;
                 signal_flag = 1;
+                signal_timer = 0;
                 PORTAbits.RA0 = 1;
             }
         }
-        if (signal_flag){
-            signal_timer++;
-            if (signal_timer >= DELAY_SIGNAL){
+        if (signal_flag) {
+            if (signal_timer >= DELAY_SIGNAL) {
                 signal_flag = 0;
                 signal_timer = 0;
                 PORTAbits.RA0 = 0;
